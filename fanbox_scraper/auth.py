@@ -1,9 +1,11 @@
 """
-Authentication handler for login functionality.
+Authentication handler for Pixiv Fanbox login functionality.
 """
 
 import requests
 import logging
+import json
+import time
 from typing import Dict, Optional
 from bs4 import BeautifulSoup
 from .config import Config
@@ -11,8 +13,12 @@ from .config import Config
 
 class AuthHandler:
     """
-    Handles authentication and session management.
+    Handles authentication and session management for Pixiv Fanbox.
     """
+
+    PIXIV_LOGIN_URL = "https://accounts.pixiv.net/api/login"
+    PIXIV_AUTH_URL = "https://accounts.pixiv.net/login"
+    FANBOX_URL = "https://www.fanbox.cc"
 
     def __init__(self, session: requests.Session, config: Config):
         """
@@ -27,110 +33,174 @@ class AuthHandler:
         self.logger = logging.getLogger(__name__)
         self.is_authenticated = False
 
+        # Set headers required for Fanbox
+        self.session.headers.update({
+            'Origin': 'https://www.fanbox.cc',
+            'Referer': 'https://www.fanbox.cc/',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
+        })
+
     def login(self, username: str, password: str) -> bool:
         """
-        Perform login with username and password.
+        Perform login with Pixiv credentials for Fanbox access.
 
         Args:
-            username: User's username or email
-            password: User's password
+            username: Pixiv username or email
+            password: Pixiv password
 
         Returns:
             True if login successful, False otherwise
         """
-        login_url = self.config.login_url
-
-        if not login_url:
-            self.logger.warning("No login URL configured, skipping authentication")
-            return True
+        if not username or not password:
+            self.logger.warning("No credentials provided, skipping authentication")
+            return False
 
         try:
-            response = self.session.get(login_url, timeout=30)
+            self.logger.info("Initiating Pixiv Fanbox login...")
+
+            # Step 1: Get login page to extract post_key
+            response = self.session.get(self.PIXIV_AUTH_URL, timeout=30)
             response.raise_for_status()
 
-            csrf_token = self._extract_csrf_token(response.text)
+            post_key = self._extract_post_key(response.text)
+            if not post_key:
+                self.logger.warning("Could not extract post_key, attempting login without it")
 
+            # Step 2: Perform login
             login_data = {
-                'username': username,
+                'pixiv_id': username,
                 'password': password,
+                'captcha': '',
+                'g_recaptcha_response': '',
+                'post_key': post_key or '',
+                'source': 'accounts',
+                'ref': '',
+                'return_to': 'https://www.fanbox.cc'
             }
 
-            if csrf_token:
-                login_data['csrf_token'] = csrf_token
-
+            self.logger.debug("Submitting login credentials...")
             response = self.session.post(
-                login_url,
+                self.PIXIV_LOGIN_URL,
                 data=login_data,
                 timeout=30,
                 allow_redirects=True
             )
 
-            self.is_authenticated = self._verify_login(response)
+            # Check if login was successful
+            if response.status_code == 200:
+                try:
+                    result = response.json()
+                    if result.get('error'):
+                        self.logger.error(f"Login failed: {result.get('message', 'Unknown error')}")
+                        return False
+                except json.JSONDecodeError:
+                    pass
+
+            # Step 3: Verify we have the necessary cookies
+            time.sleep(1)
+            self.is_authenticated = self._verify_fanbox_access()
+
+            if self.is_authenticated:
+                self.logger.info("Successfully authenticated with Pixiv Fanbox")
+            else:
+                self.logger.error("Authentication verification failed")
 
             return self.is_authenticated
 
         except requests.RequestException as e:
             self.logger.error(f"Login request failed: {e}")
             return False
+        except Exception as e:
+            self.logger.error(f"Unexpected error during login: {e}")
+            return False
 
-    def _extract_csrf_token(self, html: str) -> Optional[str]:
+    def _extract_post_key(self, html: str) -> Optional[str]:
         """
-        Extract CSRF token from HTML if present.
+        Extract post_key from Pixiv login page.
 
         Args:
             html: HTML content
 
         Returns:
-            CSRF token if found, None otherwise
+            post_key if found, None otherwise
         """
         try:
             soup = BeautifulSoup(html, 'lxml')
 
-            csrf_input = soup.find('input', {'name': 'csrf_token'})
-            if csrf_input and csrf_input.get('value'):
-                return csrf_input['value']
+            # Look for post_key in input field
+            post_key_input = soup.find('input', {'name': 'post_key'})
+            if post_key_input and post_key_input.get('value'):
+                return post_key_input['value']
 
-            csrf_meta = soup.find('meta', {'name': 'csrf-token'})
-            if csrf_meta and csrf_meta.get('content'):
-                return csrf_meta['content']
+            # Look for post_key in global config
+            scripts = soup.find_all('script')
+            for script in scripts:
+                if script.string and 'pixiv.context.token' in script.string:
+                    # Extract token from JavaScript
+                    import re
+                    match = re.search(r'pixiv\.context\.token\s*=\s*["\']([^"\']+)["\']', script.string)
+                    if match:
+                        return match.group(1)
 
         except Exception as e:
-            self.logger.debug(f"Error extracting CSRF token: {e}")
+            self.logger.debug(f"Error extracting post_key: {e}")
 
         return None
 
-    def _verify_login(self, response: requests.Response) -> bool:
+    def _verify_fanbox_access(self) -> bool:
         """
-        Verify if login was successful.
-
-        Args:
-            response: Response from login request
+        Verify if we have access to Fanbox after login.
 
         Returns:
-            True if login successful
+            True if authenticated and have Fanbox access
         """
-        if response.status_code != 200:
+        try:
+            # Check for FANBOXSESSID cookie
+            cookies = self.session.cookies.get_dict()
+            if 'FANBOXSESSID' in cookies:
+                self.logger.debug("FANBOXSESSID cookie found")
+                return True
+
+            # Try accessing Fanbox to see if we're logged in
+            response = self.session.get(self.FANBOX_URL, timeout=30)
+
+            if response.status_code == 200:
+                # Check if we're redirected to login page
+                if 'login' not in response.url.lower():
+                    self.logger.debug("Successfully accessed Fanbox without redirect")
+                    return True
+
             return False
 
-        soup = BeautifulSoup(response.text, 'lxml')
-
-        error_indicators = soup.find_all(['div', 'span'], class_=['error', 'alert', 'warning'])
-        if any('login' in elem.text.lower() or 'password' in elem.text.lower() for elem in error_indicators):
+        except Exception as e:
+            self.logger.error(f"Error verifying Fanbox access: {e}")
             return False
 
-        success_indicators = [
-            soup.find('div', class_=['dashboard', 'profile', 'account']),
-            soup.find('a', text='Logout'),
-            soup.find('a', text='Sign Out'),
-        ]
+    def login_with_session_id(self, session_id: str) -> bool:
+        """
+        Login using an existing FANBOXSESSID cookie.
 
-        if any(success_indicators):
-            return True
+        Args:
+            session_id: FANBOXSESSID cookie value
 
-        if 'Set-Cookie' in response.headers:
-            return True
+        Returns:
+            True if session is valid
+        """
+        self.logger.info("Attempting login with session ID...")
 
-        return True
+        # Set the FANBOXSESSID cookie
+        self.session.cookies.set('FANBOXSESSID', session_id, domain='.fanbox.cc')
+
+        # Verify the session works
+        self.is_authenticated = self._verify_fanbox_access()
+
+        if self.is_authenticated:
+            self.logger.info("Successfully authenticated with session ID")
+        else:
+            self.logger.error("Invalid session ID")
+
+        return self.is_authenticated
 
     def get_authenticated_session(self) -> requests.Session:
         """

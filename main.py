@@ -13,20 +13,30 @@ from fanbox_scraper import FanboxScraper, Config
 def main():
     """Main entry point for the FanboxDownloader."""
     parser = argparse.ArgumentParser(
-        description='FanboxDownloader - Web scraper with login and ordered image downloading',
+        description='FanboxDownloader - Pixiv Fanbox scraper with login and ordered image downloading',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python main.py --url https://example.com/page
+  # Download from a specific creator
+  python main.py --url https://creator-name.fanbox.cc --username user --password pass
+
+  # Download a specific post
+  python main.py --url https://creator-name.fanbox.cc/posts/123456 --username user --password pass
+
+  # Use session ID instead of credentials
+  python main.py --url https://www.fanbox.cc/@creator --session-id YOUR_FANBOXSESSID
+
+  # Use configuration file
   python main.py --config .env --follow-links --max-depth 5
-  python main.py --url https://example.com --username user --password pass
+
+  # Create example configuration
   python main.py --create-example-config
         """
     )
 
     parser.add_argument(
         '--url',
-        help='Starting URL to scrape'
+        help='Starting URL to scrape (e.g., https://creator.fanbox.cc or https://www.fanbox.cc/@creator)'
     )
 
     parser.add_argument(
@@ -37,17 +47,22 @@ Examples:
 
     parser.add_argument(
         '--username',
-        help='Username for login'
+        help='Pixiv username for login'
     )
 
     parser.add_argument(
         '--password',
-        help='Password for login'
+        help='Pixiv password for login'
+    )
+
+    parser.add_argument(
+        '--session-id',
+        help='FANBOXSESSID cookie value (alternative to username/password)'
     )
 
     parser.add_argument(
         '--login-url',
-        help='Login page URL'
+        help='Login page URL (default: https://accounts.pixiv.net/login)'
     )
 
     parser.add_argument(
@@ -95,6 +110,8 @@ Examples:
         config.username = args.username
     if args.password:
         config.password = args.password
+    if hasattr(args, 'session_id') and args.session_id:
+        config.session_id = args.session_id
     if args.login_url:
         config.login_url = args.login_url
     if args.download_dir:
@@ -113,7 +130,7 @@ Examples:
         return 1
 
     print("=" * 60)
-    print("FanboxDownloader - Web Scraper")
+    print("FanboxDownloader - Pixiv Fanbox Scraper")
     print("=" * 60)
 
     config.display()
@@ -121,12 +138,21 @@ Examples:
     scraper = FanboxScraper(config)
 
     try:
-        if config.username and config.password:
+        # Attempt authentication
+        if config.session_id or (config.username and config.password):
             print("Logging in...")
-            if not scraper.login(config.username, config.password):
-                print("Login failed. Continuing without authentication...")
+            if not scraper.login(
+                username=config.username,
+                password=config.password,
+                session_id=config.session_id
+            ):
+                print("Login failed. Exiting...")
+                return 1
             else:
                 print("Login successful!")
+        else:
+            print("Warning: No authentication provided. Some content may not be accessible.")
+            print("Provide --username and --password, or --session-id to authenticate.\n")
 
         print(f"\nStarting scraping from: {config.start_url}")
         print("-" * 60)

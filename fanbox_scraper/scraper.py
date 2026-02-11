@@ -48,26 +48,42 @@ class FanboxScraper:
             ]
         )
 
-    def login(self, username: str, password: str) -> bool:
+    def login(self, username: str = None, password: str = None, session_id: str = None) -> bool:
         """
-        Perform login with credentials.
+        Perform login with credentials or session ID.
 
         Args:
-            username: User's username or email
-            password: User's password
+            username: Pixiv username or email (optional if session_id provided)
+            password: Pixiv password (optional if session_id provided)
+            session_id: FANBOXSESSID cookie value (alternative to username/password)
 
         Returns:
             True if login successful, False otherwise
         """
-        self.logger.info(f"Attempting login for user: {username}")
-        success = self.auth_handler.login(username, password)
+        # Try session ID first if provided
+        if session_id:
+            self.logger.info("Attempting login with session ID...")
+            success = self.auth_handler.login_with_session_id(session_id)
+            if success:
+                self.logger.info("Login successful with session ID")
+                return True
+            else:
+                self.logger.warning("Session ID login failed, trying username/password if available")
 
-        if success:
-            self.logger.info("Login successful")
-        else:
-            self.logger.error("Login failed")
+        # Try username/password
+        if username and password:
+            self.logger.info(f"Attempting login for user: {username}")
+            success = self.auth_handler.login(username, password)
 
-        return success
+            if success:
+                self.logger.info("Login successful")
+            else:
+                self.logger.error("Login failed")
+
+            return success
+
+        self.logger.warning("No valid authentication method provided")
+        return False
 
     def scrape_page(self, url: str) -> Dict:
         """
