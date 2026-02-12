@@ -96,6 +96,27 @@ Examples:
         help='Display current configuration and exit'
     )
 
+    # Uncensor options
+    parser.add_argument(
+        '--enable-uncensor',
+        action='store_true',
+        help='Enable automatic uncensoring of downloaded images (requires: pip install -r requirements-uncensor.txt)'
+    )
+
+    parser.add_argument(
+        '--uncensor-device',
+        choices=['cpu', 'cuda', 'mps'],
+        default='cpu',
+        help='Device for uncensoring (cpu, cuda for NVIDIA GPU, mps for Apple Silicon)'
+    )
+
+    parser.add_argument(
+        '--uncensor-model',
+        choices=['lama'],
+        default='lama',
+        help='Model to use for uncensoring (default: lama)'
+    )
+
     args = parser.parse_args()
 
     if args.create_example_config:
@@ -120,6 +141,12 @@ Examples:
         config.follow_links = True
     if args.max_depth:
         config.max_depth = args.max_depth
+    if args.enable_uncensor:
+        config.enable_uncensor = True
+    if args.uncensor_device:
+        config.uncensor_device = args.uncensor_device
+    if args.uncensor_model:
+        config.uncensor_model = args.uncensor_model
 
     if args.show_config:
         config.display()

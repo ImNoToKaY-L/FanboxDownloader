@@ -18,18 +18,37 @@ class ImageDownloader:
     Downloads images from URLs in order and manages file storage.
     """
 
-    def __init__(self, session: requests.Session, download_dir: str = "downloads"):
+    def __init__(self, session: requests.Session, download_dir: str = "downloads", config=None):
         """
         Initialize the image downloader.
 
         Args:
             session: Requests session for downloading
             download_dir: Directory to save downloaded images
+            config: Configuration object (optional, for uncensor feature)
         """
         self.session = session
         self.download_dir = Path(download_dir)
         self.download_dir.mkdir(parents=True, exist_ok=True)
         self.logger = logging.getLogger(__name__)
+        self.config = config
+        self.uncensor = None
+
+        # Initialize uncensor if enabled
+        if config and getattr(config, 'enable_uncensor', False):
+            try:
+                from .uncensor import ImageUncensor
+                self.uncensor = ImageUncensor(
+                    device=config.uncensor_device,
+                    model_type=config.uncensor_model,
+                    auto_detect=config.uncensor_auto_detect,
+                    output_dir=config.uncensor_output_dir
+                )
+                self.logger.info("Uncensor feature enabled")
+            except ImportError:
+                self.logger.warning("Uncensor dependencies not installed. Install with: pip install -r requirements-uncensor.txt")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize uncensor: {e}")
 
     def download_images(self, image_urls: List[str], prefix: str = "") -> List[str]:
         """
@@ -92,6 +111,15 @@ class ImageDownloader:
                         f.write(chunk)
 
             if self._verify_image(file_path):
+                # Post-download uncensor hook
+                if self.uncensor:
+                    try:
+                        uncensored_path = self.uncensor.uncensor_image(str(file_path))
+                        if uncensored_path:
+                            self.logger.info(f"Uncensored: {uncensored_path}")
+                    except Exception as e:
+                        self.logger.warning(f"Uncensor failed for {file_path}: {e}")
+
                 return str(file_path)
             else:
                 self.logger.warning(f"Downloaded file is not a valid image: {file_path}")

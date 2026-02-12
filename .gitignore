@@ -41,6 +41,11 @@ config.ini
 downloads/
 output/
 images/
+uncensored/
+
+# AI Models (cache directory, not source code)
+/models/
+!/models/.gitkeep
 
 # Logs
 *.log
