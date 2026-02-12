@@ -12,6 +12,7 @@ A Python web scraper specifically designed for downloading content from **Pixiv 
 - **Session Management**: Maintain authenticated sessions across requests
 - **Flexible Authentication**: Use username/password or FANBOXSESSID cookie
 - **Configurable**: Use command-line arguments or .env configuration file
+- **🆕 Image Uncensoring**: AI-powered mosaic/pixelation removal using LaMa inpainting (optional)
 
 ## Installation
 
@@ -25,6 +26,13 @@ cd FanboxDownloader
 ```bash
 pip install -r requirements.txt
 ```
+
+3. **(Optional)** Install uncensor dependencies for AI-powered image uncensoring:
+```bash
+pip install -r requirements-uncensor.txt
+```
+
+**Note**: Uncensor feature requires PyTorch (~500MB+) and model downloads (~200MB). GPU highly recommended for best performance.
 
 ## Quick Start
 
@@ -231,6 +239,81 @@ Run:
 ```bash
 python main.py --config .env
 ```
+
+## Image Uncensoring (Optional Feature)
+
+FanboxDownloader includes an AI-powered uncensoring feature that can automatically remove mosaic/pixelation censorship from downloaded images using the LaMa inpainting model.
+
+### Prerequisites
+
+Install uncensor dependencies:
+```bash
+pip install -r requirements-uncensor.txt
+```
+
+**Requirements:**
+- PyTorch 2.0+ (~500MB+)
+- ~200MB for model download (first run only)
+- GPU highly recommended (10-30x faster than CPU)
+
+### Usage
+
+#### Integrated with Downloader
+
+```bash
+# Download and automatically uncensor
+python main.py \
+  --url https://creator.fanbox.cc \
+  --session-id YOUR_SESSION_ID \
+  --enable-uncensor \
+  --uncensor-device cuda
+
+# Configure via .env
+ENABLE_UNCENSOR=true
+UNCENSOR_DEVICE=cuda  # or cpu, mps (Apple Silicon)
+UNCENSOR_MODEL=lama
+```
+
+#### Standalone Uncensor Tool
+
+Process existing images independently:
+
+```bash
+# Single image
+python uncensor_standalone.py --input image.jpg --output uncensored.jpg
+
+# Batch process directory
+python uncensor_standalone.py --input-dir downloads/ --output-dir uncensored/
+
+# Use GPU for faster processing
+python uncensor_standalone.py --input-dir downloads/ --device cuda
+
+# Disable auto-detection (use manual masks)
+python uncensor_standalone.py --input image.jpg --mask mask.png --no-auto-detect
+```
+
+### Performance
+
+| Device | Resolution | Time/Image | Recommended For |
+|--------|-----------|-----------|-----------------|
+| RTX 5080 | 1920x1080 | ~1-2s | Batch processing |
+| RTX 3060 | 1920x1080 | ~3-5s | Regular use |
+| CPU (8-core) | 1920x1080 | ~30-45s | Light use |
+| Apple M1/M2 | 1920x1080 | ~8-12s | Mac users |
+
+### How It Works
+
+1. **Auto-Detection**: Automatically detects mosaic/pixelated areas using computer vision
+2. **AI Inpainting**: Uses LaMa (Large Mask Inpainting) model to reconstruct censored areas
+3. **Ordered Processing**: Processes images in download order
+4. **Dual Output**: Saves both original and uncensored versions
+
+### Important Notes
+
+- Auto-detection works best on clear mosaic patterns
+- GPU (CUDA/MPS) highly recommended for batch processing
+- First run downloads model (~200MB)
+- CPU processing is slow but functional
 
 ## Output
 

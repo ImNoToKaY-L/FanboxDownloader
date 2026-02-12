@@ -32,7 +32,7 @@ class FanboxScraper:
 
         self.auth_handler = AuthHandler(self.session, config)
         self.parser = PageParser(self.session)
-        self.downloader = ImageDownloader(self.session, config.download_dir)
+        self.downloader = ImageDownloader(self.session, config.download_dir, config)
 
         self.logger = logging.getLogger(__name__)
         self._setup_logging()
