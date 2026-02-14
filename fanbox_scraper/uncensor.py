@@ -25,7 +25,8 @@ class ImageUncensor:
         model_type: str = 'lama',
         auto_detect: bool = True,
         output_dir: str = 'uncensored',
-        cache_dir: str = 'models'
+        cache_dir: str = 'models',
+        sensitivity: float = 0.5
     ):
         """
         Initialize image uncensor.
@@ -36,12 +37,18 @@ class ImageUncensor:
             auto_detect: Automatically detect censored areas
             output_dir: Directory to save uncensored images
             cache_dir: Directory for model cache
+            sensitivity: Detection sensitivity (0.0-1.0, higher = more sensitive)
+                        0.3 = low (only obvious censorship)
+                        0.5 = medium (default)
+                        0.7 = high (small mosaics)
+                        0.9 = very high (may have false positives)
         """
         self.device = device
         self.model_type = model_type
         self.auto_detect = auto_detect
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.sensitivity = max(0.0, min(1.0, sensitivity))  # Clamp to 0-1
 
         self.logger = logging.getLogger(__name__)
         self.model_loader = ModelLoader(cache_dir=cache_dir)
@@ -69,7 +76,7 @@ class ImageUncensor:
         self,
         image: Image.Image,
         threshold: float = 0.7,
-        min_area: int = 100
+        min_area: Optional[int] = None
     ) -> Optional[Image.Image]:
         """
         Automatically detect censored areas in image.
@@ -77,7 +84,7 @@ class ImageUncensor:
         Args:
             image: Input PIL Image
             threshold: Detection confidence threshold (0-1)
-            min_area: Minimum area of censored region in pixels
+            min_area: Minimum area of censored region in pixels (auto if None)
 
         Returns:
             Binary mask PIL Image or None if no censorship detected
@@ -89,21 +96,53 @@ class ImageUncensor:
             # Detect pixelation/mosaic using edge detection and frequency analysis
             gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
 
+            # Adjust detection parameters based on sensitivity
+            # Higher sensitivity = more aggressive detection
+
+            # Sensitivity scaling (0.0 = conservative, 1.0 = very aggressive)
+            s = self.sensitivity
+
+            # Canny edge detection thresholds (lower = more sensitive)
+            canny_low = int(50 * (1.0 - s * 0.6))  # 50 -> 20 at high sensitivity
+            canny_high = int(150 * (1.0 - s * 0.4))  # 150 -> 90 at high sensitivity
+
+            # Edge density threshold (lower = more sensitive)
+            edge_threshold = 0.3 * (1.0 - s * 0.5)  # 0.3 -> 0.15 at high sensitivity
+
+            # Laplacian percentile (higher = more sensitive)
+            laplacian_percentile = 30 + (s * 40)  # 30 -> 70 at high sensitivity
+
+            # Blur kernel size (smaller = more detail, more sensitive)
+            blur_size = max(5, int(15 * (1.0 - s * 0.5)))  # 15 -> 8 at high sensitivity
+
+            # Minimum area (smaller = detect smaller regions)
+            if min_area is None:
+                # Scale with image size and sensitivity
+                image_area = gray.shape[0] * gray.shape[1]
+                min_area_ratio = 0.0001 * (1.0 - s * 0.8)  # 0.0001 -> 0.00002 at high sensitivity
+                min_area = int(image_area * min_area_ratio)
+                min_area = max(25, min(min_area, 500))  # Clamp between 25-500 pixels
+
+            self.logger.debug(f"Detection params (sensitivity={s:.2f}): "
+                            f"canny=[{canny_low},{canny_high}], edge_thresh={edge_threshold:.3f}, "
+                            f"laplacian_pct={laplacian_percentile:.1f}, min_area={min_area}")
+
             # Method 1: Detect blocky patterns (mosaic)
             # Use Laplacian variance to detect low-detail areas
             laplacian = cv2.Laplacian(gray, cv2.CV_64F)
-            laplacian_var = cv2.blur(np.abs(laplacian), (15, 15))
+            laplacian_var = cv2.blur(np.abs(laplacian), (blur_size, blur_size))
 
             # Method 2: Detect sharp edges (blocky patterns)
-            edges = cv2.Canny(gray, 50, 150)
-            edge_density = cv2.blur(edges.astype(float) / 255, (15, 15))
+            edges = cv2.Canny(gray, canny_low, canny_high)
+            edge_density = cv2.blur(edges.astype(float) / 255, (blur_size, blur_size))
 
             # Combine detection methods
             # Low variance + high edge density = likely mosaic
-            mosaic_score = (edge_density > 0.3) & (laplacian_var < np.percentile(laplacian_var, 30))
+            mosaic_score = (edge_density > edge_threshold) & (laplacian_var < np.percentile(laplacian_var, laplacian_percentile))
 
             # Clean up the mask
-            kernel = np.ones((5, 5), np.uint8)
+            kernel_size = max(3, int(5 * (1.0 - s * 0.3)))  # Smaller kernel for high sensitivity
+            kernel = np.ones((kernel_size, kernel_size), np.uint8)
             mosaic_score = cv2.morphologyEx(mosaic_score.astype(np.uint8), cv2.MORPH_CLOSE, kernel)
             mosaic_score = cv2.morphologyEx(mosaic_score, cv2.MORPH_OPEN, kernel)
 
@@ -112,22 +151,30 @@ class ImageUncensor:
 
             # Create final mask
             mask = np.zeros_like(gray)
+            detected_regions = 0
             for contour in contours:
                 area = cv2.contourArea(contour)
                 if area >= min_area:
                     cv2.drawContours(mask, [contour], -1, 255, -1)
+                    detected_regions += 1
 
             # Expand mask slightly to ensure coverage
-            kernel_expand = np.ones((10, 10), np.uint8)
-            mask = cv2.dilate(mask, kernel_expand, iterations=2)
+            # Scale expansion with sensitivity
+            expand_size = max(5, int(10 * (1.0 + s * 0.5)))
+            expand_iterations = max(1, int(2 * (1.0 + s * 0.5)))
+            kernel_expand = np.ones((expand_size, expand_size), np.uint8)
+            mask = cv2.dilate(mask, kernel_expand, iterations=expand_iterations)
 
             if mask.sum() == 0:
-                self.logger.info("No censorship detected")
+                self.logger.info(f"No censorship detected (sensitivity={s:.2f})")
                 return None
 
             # Convert to PIL
             mask_pil = Image.fromarray(mask)
-            self.logger.info(f"Detected censored area: {mask.sum() / 255} pixels")
+            mask_pixels = int(mask.sum() / 255)
+            mask_percentage = (mask_pixels / (gray.shape[0] * gray.shape[1])) * 100
+            self.logger.info(f"Detected {detected_regions} censored region(s): "
+                           f"{mask_pixels} pixels ({mask_percentage:.2f}% of image)")
 
             return mask_pil
 
@@ -262,6 +309,7 @@ class ImageUncensor:
             'device': self.device,
             'model_type': self.model_type,
             'auto_detect': self.auto_detect,
+            'sensitivity': self.sensitivity,
             'output_dir': str(self.output_dir)
         }
 

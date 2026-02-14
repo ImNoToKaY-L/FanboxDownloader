@@ -288,9 +288,52 @@ python uncensor_standalone.py --input-dir downloads/ --output-dir uncensored/
 # Use GPU for faster processing
 python uncensor_standalone.py --input-dir downloads/ --device cuda
 
+# High sensitivity for small/subtle mosaics
+python uncensor_standalone.py --input-dir downloads/ --sensitivity 0.8 --device cuda
+
 # Disable auto-detection (use manual masks)
 python uncensor_standalone.py --input image.jpg --mask mask.png --no-auto-detect
 ```
+
+#### Detection Sensitivity
+
+The `--sensitivity` parameter (or `UNCENSOR_SENSITIVITY` in .env) controls how aggressive the censorship detection is:
+
+| Sensitivity | Description | Use Case |
+|-------------|-------------|----------|
+| **0.3-0.4** | Low (conservative) | Only obvious, large mosaic patterns |
+| **0.5** | Medium (default) | Standard mosaic censorship |
+| **0.7-0.8** | High | Small or subtle mosaic areas |
+| **0.9+** | Very high | Tiny mosaics (may cause false positives) |
+
+**Examples:**
+
+```bash
+# Integrated with downloader (high sensitivity for small mosaics)
+python main.py \
+  --url https://creator.fanbox.cc \
+  --session-id YOUR_SESSION \
+  --enable-uncensor \
+  --uncensor-device cuda \
+  --uncensor-sensitivity 0.8
+
+# Standalone tool with custom sensitivity
+python uncensor_standalone.py \
+  --input-dir downloads/ \
+  --sensitivity 0.75 \
+  --device cuda
+
+# In .env configuration
+ENABLE_UNCENSOR=true
+UNCENSOR_SENSITIVITY=0.8
+UNCENSOR_DEVICE=cuda
+```
+
+**Tips for Small Mosaics:**
+- Start with 0.7 sensitivity and increase to 0.8-0.9 if needed
+- Higher sensitivity may detect non-censored areas (false positives)
+- Use GPU for faster iteration when testing different sensitivity levels
+- Monitor logs for "Detected X censored region(s)" messages
 
 ### Performance
 

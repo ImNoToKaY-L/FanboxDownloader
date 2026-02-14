@@ -47,6 +47,7 @@ class Config:
         self.uncensor_device = os.getenv('UNCENSOR_DEVICE', 'cpu')  # cpu, cuda, mps
         self.uncensor_auto_detect = os.getenv('UNCENSOR_AUTO_DETECT', 'true').lower() == 'true'
         self.uncensor_output_dir = os.getenv('UNCENSOR_OUTPUT_DIR', 'uncensored')
+        self.uncensor_sensitivity = float(os.getenv('UNCENSOR_SENSITIVITY', '0.5'))
 
     def validate(self) -> bool:
         """
@@ -78,6 +79,7 @@ class Config:
         print(f"  Delay Between Requests: {self.delay_between_requests}s")
         if self.enable_uncensor:
             print(f"  Uncensor: Enabled ({self.uncensor_model} on {self.uncensor_device})")
+            print(f"  Uncensor Sensitivity: {self.uncensor_sensitivity}")
             print(f"  Uncensor Output: {self.uncensor_output_dir}")
         else:
             print(f"  Uncensor: Disabled")
@@ -124,6 +126,10 @@ UNCENSOR_MODEL=lama
 UNCENSOR_DEVICE=cpu  # cpu, cuda (NVIDIA GPU), or mps (Apple Silicon)
 UNCENSOR_AUTO_DETECT=true
 UNCENSOR_OUTPUT_DIR=uncensored
+# Detection sensitivity: 0.0-1.0 (default: 0.5)
+# Use 0.7-0.9 for small/subtle mosaic patterns
+# Higher values = more sensitive but may increase false positives
+UNCENSOR_SENSITIVITY=0.5
 
 # Advanced: Login URL (usually don't need to change this)
 LOGIN_URL=https://accounts.pixiv.net/login
