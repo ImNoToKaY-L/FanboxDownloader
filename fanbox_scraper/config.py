@@ -48,6 +48,7 @@ class Config:
         self.uncensor_auto_detect = os.getenv('UNCENSOR_AUTO_DETECT', 'true').lower() == 'true'
         self.uncensor_output_dir = os.getenv('UNCENSOR_OUTPUT_DIR', 'uncensored')
         self.uncensor_sensitivity = float(os.getenv('UNCENSOR_SENSITIVITY', '0.5'))
+        self.uncensor_max_resolution = int(os.getenv('UNCENSOR_MAX_RESOLUTION', '2048'))
 
     def validate(self) -> bool:
         """
@@ -130,6 +131,10 @@ UNCENSOR_OUTPUT_DIR=uncensored
 # Use 0.7-0.9 for small/subtle mosaic patterns
 # Higher values = more sensitive but may increase false positives
 UNCENSOR_SENSITIVITY=0.5
+# Maximum resolution for processing (default: 2048)
+# Larger images will be downscaled to prevent memory errors
+# Use 1024 for low memory, 4096 for high-end GPUs
+UNCENSOR_MAX_RESOLUTION=2048
 
 # Advanced: Login URL (usually don't need to change this)
 LOGIN_URL=https://accounts.pixiv.net/login

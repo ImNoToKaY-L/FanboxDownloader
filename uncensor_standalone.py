@@ -105,6 +105,13 @@ Notes:
              'Use 0.7-0.9 for small/subtle mosaics. '
              'Higher values may increase false positives.'
     )
+    parser.add_argument(
+        '--max-resolution',
+        type=int,
+        default=2048,
+        help='Max image dimension for processing (default: 2048). '
+             'Use 1024 for low memory systems, 4096 for high-end GPUs'
+    )
 
     # Model options
     parser.add_argument(
@@ -171,11 +178,13 @@ Notes:
             auto_detect=not args.no_auto_detect,
             output_dir=args.output_dir,
             cache_dir=args.cache_dir,
-            sensitivity=args.sensitivity
+            sensitivity=args.sensitivity,
+            max_resolution=args.max_resolution
         )
 
         logger.info(f"Sensitivity level: {args.sensitivity:.2f} "
                    f"({'low' if args.sensitivity < 0.4 else 'medium' if args.sensitivity < 0.7 else 'high' if args.sensitivity < 0.9 else 'very high'})")
+        logger.info(f"Max resolution: {args.max_resolution}px (images will be downscaled if larger)")
 
         # Process single image
         if args.input:

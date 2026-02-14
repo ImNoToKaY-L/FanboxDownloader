@@ -15,17 +15,22 @@ class LamaModel:
     Wrapper for LaMa inpainting model.
     """
 
-    def __init__(self, device: str = 'cpu', model_path: Optional[str] = None):
+    def __init__(self, device: str = 'cpu', model_path: Optional[str] = None, max_resolution: int = 2048):
         """
         Initialize LaMa model.
 
         Args:
             device: Device to use (cuda, mps, cpu)
             model_path: Path to model weights (if None, uses default)
+            max_resolution: Maximum dimension (width/height) for processing
+                          Images larger than this will be downscaled
+                          Default 2048 (safe for most GPUs and ~2GB RAM)
+                          Use 1024 for low memory systems
         """
         self.device = device
         self.model_path = model_path
         self.model = None
+        self.max_resolution = max_resolution
         self.logger = logging.getLogger(__name__)
 
     def load_model(self):
@@ -80,6 +85,43 @@ class LamaModel:
             self.logger.error(f"Failed to load LaMa model: {e}")
             raise
 
+    def _resize_if_needed(self, image: Image.Image, mask: Image.Image) -> Tuple[Image.Image, Image.Image, Optional[Tuple[int, int]]]:
+        """
+        Resize image and mask if they exceed max_resolution.
+
+        Args:
+            image: Input PIL Image
+            mask: Input PIL mask
+
+        Returns:
+            Tuple of (resized_image, resized_mask, original_size or None)
+        """
+        original_size = image.size
+        width, height = original_size
+        max_dim = max(width, height)
+
+        # Check if resizing is needed
+        if max_dim <= self.max_resolution:
+            return image, mask, None
+
+        # Calculate new dimensions maintaining aspect ratio
+        scale = self.max_resolution / max_dim
+        new_width = int(width * scale)
+        new_height = int(height * scale)
+
+        # Log the resizing
+        megapixels_before = (width * height) / 1_000_000
+        megapixels_after = (new_width * new_height) / 1_000_000
+        self.logger.info(f"Downscaling image for memory efficiency: "
+                        f"{width}x{height} ({megapixels_before:.1f}MP) -> "
+                        f"{new_width}x{new_height} ({megapixels_after:.1f}MP)")
+
+        # Resize both image and mask
+        resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        resized_mask = mask.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+        return resized_image, resized_mask, original_size
+
     def inpaint(self, image: Image.Image, mask: Image.Image) -> Image.Image:
         """
         Perform inpainting on image using mask.
@@ -95,18 +137,27 @@ class LamaModel:
             self.load_model()
 
         try:
+            # Resize if needed to prevent memory issues
+            resized_image, resized_mask, original_size = self._resize_if_needed(image, mask)
+
             # Convert PIL images to numpy arrays
-            image_np = np.array(image)
-            mask_np = np.array(mask.convert('L'))
+            image_np = np.array(resized_image)
+            mask_np = np.array(resized_mask.convert('L'))
 
             # Ensure mask is binary
             mask_np = (mask_np > 127).astype(np.uint8) * 255
 
             # Run inpainting
+            self.logger.debug(f"Processing {image_np.shape[1]}x{image_np.shape[0]} image...")
             result_np = self.model(image_np, mask_np)
 
             # Convert back to PIL
             result = Image.fromarray(result_np)
+
+            # Upscale back to original size if needed
+            if original_size is not None:
+                self.logger.info(f"Upscaling result back to original size: {original_size[0]}x{original_size[1]}")
+                result = result.resize(original_size, Image.Resampling.LANCZOS)
 
             return result
 

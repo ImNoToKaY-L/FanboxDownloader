@@ -26,7 +26,8 @@ class ImageUncensor:
         auto_detect: bool = True,
         output_dir: str = 'uncensored',
         cache_dir: str = 'models',
-        sensitivity: float = 0.5
+        sensitivity: float = 0.5,
+        max_resolution: int = 2048
     ):
         """
         Initialize image uncensor.
@@ -42,6 +43,9 @@ class ImageUncensor:
                         0.5 = medium (default)
                         0.7 = high (small mosaics)
                         0.9 = very high (may have false positives)
+            max_resolution: Maximum image dimension for processing (default: 2048)
+                          Larger images will be downscaled to prevent memory errors
+                          Use 1024 for low memory systems, 4096 for high-end GPUs
         """
         self.device = device
         self.model_type = model_type
@@ -49,6 +53,7 @@ class ImageUncensor:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.sensitivity = max(0.0, min(1.0, sensitivity))  # Clamp to 0-1
+        self.max_resolution = max_resolution
 
         self.logger = logging.getLogger(__name__)
         self.model_loader = ModelLoader(cache_dir=cache_dir)
@@ -67,7 +72,7 @@ class ImageUncensor:
             return
 
         if self.model_type == 'lama':
-            self.model = LamaModel(device=self.device)
+            self.model = LamaModel(device=self.device, max_resolution=self.max_resolution)
             self.model.load_model()
         else:
             raise ValueError(f"Unknown model type: {self.model_type}")

@@ -39,14 +39,16 @@ class ImageDownloader:
             try:
                 from .uncensor import ImageUncensor
                 sensitivity = getattr(config, 'uncensor_sensitivity', 0.5)
+                max_resolution = getattr(config, 'uncensor_max_resolution', 2048)
                 self.uncensor = ImageUncensor(
                     device=config.uncensor_device,
                     model_type=config.uncensor_model,
                     auto_detect=config.uncensor_auto_detect,
                     output_dir=config.uncensor_output_dir,
-                    sensitivity=sensitivity
+                    sensitivity=sensitivity,
+                    max_resolution=max_resolution
                 )
-                self.logger.info(f"Uncensor feature enabled (sensitivity: {sensitivity:.2f})")
+                self.logger.info(f"Uncensor feature enabled (sensitivity: {sensitivity:.2f}, max_res: {max_resolution}px)")
             except ImportError:
                 self.logger.warning("Uncensor dependencies not installed. Install with: pip install -r requirements-uncensor.txt")
             except Exception as e:

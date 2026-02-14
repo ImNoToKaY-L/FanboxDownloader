@@ -124,6 +124,13 @@ Examples:
         help='Detection sensitivity 0.0-1.0 (default: 0.5). Use 0.7-0.9 for small/subtle mosaics'
     )
 
+    parser.add_argument(
+        '--uncensor-max-resolution',
+        type=int,
+        default=2048,
+        help='Max image dimension for processing (default: 2048). Use 1024 for low memory'
+    )
+
     args = parser.parse_args()
 
     if args.create_example_config:
@@ -156,6 +163,8 @@ Examples:
         config.uncensor_model = args.uncensor_model
     if hasattr(args, 'uncensor_sensitivity'):
         config.uncensor_sensitivity = args.uncensor_sensitivity
+    if hasattr(args, 'uncensor_max_resolution'):
+        config.uncensor_max_resolution = args.uncensor_max_resolution
 
     if args.show_config:
         config.display()
