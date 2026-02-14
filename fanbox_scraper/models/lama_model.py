@@ -30,17 +30,48 @@ class LamaModel:
 
     def load_model(self):
         """
-        Load the LaMa model. Uses simple-lama-inpainting for easier setup.
+        Load the LaMa model with proper CPU/CUDA handling.
         """
         if self.model is not None:
             return
 
         try:
-            from simple_lama_inpainting import SimpleLama
+            # Force CPU if CUDA not available
+            if self.device == 'cuda' and not torch.cuda.is_available():
+                self.logger.warning("CUDA requested but not available, falling back to CPU")
+                self.device = 'cpu'
 
-            self.logger.info(f"Loading LaMa model on {self.device}...")
-            self.model = SimpleLama(device=self.device)
-            self.logger.info("LaMa model loaded successfully")
+            # Try loading with simple-lama-inpainting
+            try:
+                from simple_lama_inpainting import SimpleLama
+
+                self.logger.info(f"Loading LaMa model on {self.device}...")
+
+                # Force map to CPU for CPU-only PyTorch
+                if self.device == 'cpu':
+                    # Set environment variable to force CPU
+                    import os
+                    os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+
+                device_str = self.device if self.device in ['cpu', 'mps'] else 'cuda'
+                self.model = SimpleLama(device=device_str)
+                self.logger.info("LaMa model loaded successfully")
+
+            except RuntimeError as e:
+                if 'CUDA' in str(e) or 'empty_strided' in str(e):
+                    # Model has CUDA-specific weights, need to remap
+                    self.logger.warning(f"CUDA/CPU mismatch detected: {str(e)[:100]}...")
+                    self.logger.info("This is likely due to CPU-only PyTorch trying to load CUDA model weights.")
+                    self.logger.info("Solution: Install PyTorch with CUDA support or use alternative inpainting method")
+                    raise RuntimeError(
+                        "simple-lama-inpainting has CUDA/CPU compatibility issues with your PyTorch installation.\n"
+                        "Solutions:\n"
+                        "1. Install PyTorch with CUDA: pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu121\n"
+                        "2. Or use a different inpainting library (coming soon)\n"
+                        "3. Or use a GPU-enabled machine"
+                    ) from e
+                else:
+                    raise
 
         except ImportError as e:
             self.logger.error("simple-lama-inpainting not installed. Install with: pip install -r requirements-uncensor.txt")
