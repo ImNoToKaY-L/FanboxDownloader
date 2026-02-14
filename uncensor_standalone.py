@@ -40,8 +40,11 @@ Examples:
   # Batch process directory
   python uncensor_standalone.py --input-dir downloads/ --output-dir uncensored/
 
-  # Use GPU
-  python uncensor_standalone.py --input image.jpg --device cuda
+  # Use GPU with high sensitivity for small mosaics
+  python uncensor_standalone.py --input-dir downloads/ --device cuda --sensitivity 0.8
+
+  # Very high sensitivity for tiny/subtle censorship
+  python uncensor_standalone.py --input image.jpg --sensitivity 0.9 --device cuda
 
   # Disable auto-detection (requires manual masks)
   python uncensor_standalone.py --input-dir images/ --mask-dir masks/ --no-auto-detect
@@ -49,6 +52,7 @@ Examples:
 Notes:
   - Requires PyTorch and uncensor dependencies: pip install -r requirements-uncensor.txt
   - Auto-detection works best on clear mosaic patterns
+  - Use higher sensitivity (0.7-0.9) for small/subtle mosaics
   - GPU highly recommended for batch processing
   - First run will download model (~200MB)
         """
@@ -92,6 +96,14 @@ Notes:
         type=float,
         default=0.7,
         help='Detection confidence threshold 0-1 (default: 0.7)'
+    )
+    parser.add_argument(
+        '--sensitivity',
+        type=float,
+        default=0.5,
+        help='Detection sensitivity 0.0-1.0 (default: 0.5). '
+             'Use 0.7-0.9 for small/subtle mosaics. '
+             'Higher values may increase false positives.'
     )
 
     # Model options
@@ -158,8 +170,12 @@ Notes:
             model_type=args.model,
             auto_detect=not args.no_auto_detect,
             output_dir=args.output_dir,
-            cache_dir=args.cache_dir
+            cache_dir=args.cache_dir,
+            sensitivity=args.sensitivity
         )
+
+        logger.info(f"Sensitivity level: {args.sensitivity:.2f} "
+                   f"({'low' if args.sensitivity < 0.4 else 'medium' if args.sensitivity < 0.7 else 'high' if args.sensitivity < 0.9 else 'very high'})")
 
         # Process single image
         if args.input:

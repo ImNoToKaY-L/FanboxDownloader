@@ -117,6 +117,13 @@ Examples:
         help='Model to use for uncensoring (default: lama)'
     )
 
+    parser.add_argument(
+        '--uncensor-sensitivity',
+        type=float,
+        default=0.5,
+        help='Detection sensitivity 0.0-1.0 (default: 0.5). Use 0.7-0.9 for small/subtle mosaics'
+    )
+
     args = parser.parse_args()
 
     if args.create_example_config:
@@ -147,6 +154,8 @@ Examples:
         config.uncensor_device = args.uncensor_device
     if args.uncensor_model:
         config.uncensor_model = args.uncensor_model
+    if hasattr(args, 'uncensor_sensitivity'):
+        config.uncensor_sensitivity = args.uncensor_sensitivity
 
     if args.show_config:
         config.display()
