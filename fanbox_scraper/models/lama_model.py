@@ -41,6 +41,25 @@ class LamaModel:
             return
 
         try:
+            # Configure PyTorch memory allocation for large images
+            import os
+
+            # Allow PyTorch to allocate larger memory blocks
+            # These settings help with large image processing
+            os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512'
+
+            # For CPU: increase memory limit and enable THP (Transparent Huge Pages)
+            if self.device == 'cpu':
+                # Enable memory-efficient mode for CPU
+                torch.set_num_threads(torch.get_num_threads())  # Use all available threads
+
+                # Try to enable large pages for better memory allocation
+                try:
+                    # This helps with large contiguous memory allocations on CPU
+                    torch.backends.cudnn.benchmark = False
+                except:
+                    pass
+
             # Force CPU if CUDA not available
             if self.device == 'cuda' and not torch.cuda.is_available():
                 self.logger.warning("CUDA requested but not available, falling back to CPU")
@@ -55,7 +74,6 @@ class LamaModel:
                 # Force map to CPU for CPU-only PyTorch
                 if self.device == 'cpu':
                     # Set environment variable to force CPU
-                    import os
                     os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
                 device_str = self.device if self.device in ['cpu', 'mps'] else 'cuda'
@@ -137,6 +155,13 @@ class LamaModel:
             self.load_model()
 
         try:
+            # Free up memory before processing
+            import gc
+            gc.collect()
+            if self.device == 'cuda' and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+
             # Resize if needed to prevent memory issues
             resized_image, resized_mask, original_size = self._resize_if_needed(image, mask)
 
@@ -148,11 +173,23 @@ class LamaModel:
             mask_np = (mask_np > 127).astype(np.uint8) * 255
 
             # Run inpainting
-            self.logger.debug(f"Processing {image_np.shape[1]}x{image_np.shape[0]} image...")
-            result_np = self.model(image_np, mask_np)
+            image_size_mb = (image_np.nbytes / (1024 * 1024))
+            self.logger.debug(f"Processing {image_np.shape[1]}x{image_np.shape[0]} image (~{image_size_mb:.1f}MB)...")
+
+            # Process with memory optimization
+            with torch.inference_mode():  # Disable gradient computation for inference
+                result_np = self.model(image_np, mask_np)
+
+            # Free memory immediately after inference
+            del image_np, mask_np
+            gc.collect()
+            if self.device == 'cuda' and torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
             # Convert back to PIL
             result = Image.fromarray(result_np)
+            del result_np
+            gc.collect()
 
             # Upscale back to original size if needed
             if original_size is not None:

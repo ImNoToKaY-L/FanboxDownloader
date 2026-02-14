@@ -48,7 +48,12 @@ class Config:
         self.uncensor_auto_detect = os.getenv('UNCENSOR_AUTO_DETECT', 'true').lower() == 'true'
         self.uncensor_output_dir = os.getenv('UNCENSOR_OUTPUT_DIR', 'uncensored')
         self.uncensor_sensitivity = float(os.getenv('UNCENSOR_SENSITIVITY', '0.5'))
-        self.uncensor_max_resolution = int(os.getenv('UNCENSOR_MAX_RESOLUTION', '2048'))
+        self.uncensor_no_downscale = os.getenv('UNCENSOR_NO_DOWNSCALE', 'false').lower() == 'true'
+        # If no_downscale is enabled, use a very large max_resolution
+        if self.uncensor_no_downscale:
+            self.uncensor_max_resolution = 999999
+        else:
+            self.uncensor_max_resolution = int(os.getenv('UNCENSOR_MAX_RESOLUTION', '2048'))
 
     def validate(self) -> bool:
         """
@@ -135,6 +140,9 @@ UNCENSOR_SENSITIVITY=0.5
 # Larger images will be downscaled to prevent memory errors
 # Use 1024 for low memory, 4096 for high-end GPUs
 UNCENSOR_MAX_RESOLUTION=2048
+# Disable automatic downscaling (process at full resolution)
+# WARNING: Requires 16GB+ RAM for large images. Set to 'true' only if needed.
+UNCENSOR_NO_DOWNSCALE=false
 
 # Advanced: Login URL (usually don't need to change this)
 LOGIN_URL=https://accounts.pixiv.net/login

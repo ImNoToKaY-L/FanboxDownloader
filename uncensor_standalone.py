@@ -112,6 +112,13 @@ Notes:
         help='Max image dimension for processing (default: 2048). '
              'Use 1024 for low memory systems, 4096 for high-end GPUs'
     )
+    parser.add_argument(
+        '--no-downscale',
+        action='store_true',
+        help='Disable automatic downscaling, process images at full resolution. '
+             'WARNING: Requires significant RAM (4-8GB+ for large images). '
+             'Only use if you have 16GB+ RAM and are experiencing quality loss from downscaling.'
+    )
 
     # Model options
     parser.add_argument(
@@ -171,6 +178,9 @@ Notes:
     print("=" * 70)
 
     try:
+        # Handle no-downscale option
+        max_resolution = 999999 if args.no_downscale else args.max_resolution
+
         # Initialize uncensor
         uncensor = ImageUncensor(
             device=args.device,
@@ -179,12 +189,18 @@ Notes:
             output_dir=args.output_dir,
             cache_dir=args.cache_dir,
             sensitivity=args.sensitivity,
-            max_resolution=args.max_resolution
+            max_resolution=max_resolution
         )
 
         logger.info(f"Sensitivity level: {args.sensitivity:.2f} "
                    f"({'low' if args.sensitivity < 0.4 else 'medium' if args.sensitivity < 0.7 else 'high' if args.sensitivity < 0.9 else 'very high'})")
-        logger.info(f"Max resolution: {args.max_resolution}px (images will be downscaled if larger)")
+
+        if args.no_downscale:
+            logger.warning("⚠️  Full-resolution mode enabled - no downscaling")
+            logger.warning("⚠️  This requires significant RAM (4-8GB+ for large images)")
+            logger.warning("⚠️  If you get memory errors, remove --no-downscale flag")
+        else:
+            logger.info(f"Max resolution: {args.max_resolution}px (images will be downscaled if larger)")
 
         # Process single image
         if args.input:

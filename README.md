@@ -335,6 +335,62 @@ UNCENSOR_DEVICE=cuda
 - Use GPU for faster iteration when testing different sensitivity levels
 - Monitor logs for "Detected X censored region(s)" messages
 
+#### Full-Resolution Processing (Advanced)
+
+By default, images larger than 2048px are downscaled to prevent memory errors. If you have ample RAM (16GB+) and want maximum quality:
+
+**Command Line:**
+```bash
+# Process at full resolution without downscaling
+python uncensor_standalone.py \
+  --input large_image.jpg \
+  --sensitivity 0.8 \
+  --no-downscale \
+  --device cuda
+
+# Integrated mode
+python main.py \
+  --url https://creator.fanbox.cc \
+  --session-id YOUR_SESSION \
+  --enable-uncensor \
+  --uncensor-no-downscale \
+  --uncensor-device cuda
+```
+
+**Configuration File (.env):**
+```ini
+UNCENSOR_NO_DOWNSCALE=true
+UNCENSOR_DEVICE=cuda
+UNCENSOR_SENSITIVITY=0.8
+```
+
+**Memory Requirements:**
+
+| Image Resolution | RAM Required (Est.) | Recommended |
+|-----------------|---------------------|-------------|
+| 1920×1080 (FHD) | ~800MB | 4GB+ RAM |
+| 2560×1440 (QHD) | ~1.5GB | 8GB+ RAM |
+| 3840×2160 (4K) | ~3GB | 16GB+ RAM |
+| 5120×2880 (5K) | ~5GB | 32GB+ RAM |
+
+**Performance Optimizations (Automatic):**
+- `PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512` for better memory management
+- Garbage collection before/after inference
+- `torch.inference_mode()` for reduced memory overhead
+- Immediate tensor cleanup after processing
+
+**When to Use:**
+- ✅ You have 16GB+ RAM
+- ✅ Working with critical images where quality is paramount
+- ✅ Downscaling artifacts are visible in results
+- ✅ Processing a small number of high-resolution images
+
+**When NOT to Use:**
+- ❌ Limited RAM (< 16GB)
+- ❌ Batch processing many images
+- ❌ CPU-only processing (very slow)
+- ❌ Getting "not enough memory" errors
+
 ### Performance
 
 | Device | Resolution | Time/Image | Recommended For |

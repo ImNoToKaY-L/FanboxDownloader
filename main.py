@@ -131,6 +131,12 @@ Examples:
         help='Max image dimension for processing (default: 2048). Use 1024 for low memory'
     )
 
+    parser.add_argument(
+        '--uncensor-no-downscale',
+        action='store_true',
+        help='Process images at full resolution without downscaling (requires 16GB+ RAM)'
+    )
+
     args = parser.parse_args()
 
     if args.create_example_config:
@@ -164,7 +170,11 @@ Examples:
     if hasattr(args, 'uncensor_sensitivity'):
         config.uncensor_sensitivity = args.uncensor_sensitivity
     if hasattr(args, 'uncensor_max_resolution'):
-        config.uncensor_max_resolution = args.uncensor_max_resolution
+        # Handle no-downscale option
+        if hasattr(args, 'uncensor_no_downscale') and args.uncensor_no_downscale:
+            config.uncensor_max_resolution = 999999
+        else:
+            config.uncensor_max_resolution = args.uncensor_max_resolution
 
     if args.show_config:
         config.display()
