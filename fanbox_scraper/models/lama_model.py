@@ -43,10 +43,17 @@ class LamaModel:
         try:
             # Configure PyTorch memory allocation for large images
             import os
+            import multiprocessing
 
             # Allow PyTorch to allocate larger memory blocks
             # These settings help with large image processing
-            os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512'
+            if 'PYTORCH_CUDA_ALLOC_CONF' not in os.environ:
+                os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512,expandable_segments:True'
+
+            # Optimize CPU threading for large tensor operations
+            if 'OMP_NUM_THREADS' not in os.environ:
+                num_cores = multiprocessing.cpu_count()
+                os.environ['OMP_NUM_THREADS'] = str(num_cores)
 
             # For CPU: increase memory limit and enable THP (Transparent Huge Pages)
             if self.device == 'cpu':
